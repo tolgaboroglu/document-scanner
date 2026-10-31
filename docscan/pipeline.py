@@ -1,4 +1,9 @@
-"""End-to-end: photo → flattened card → OCR words → contact fields."""
+"""End-to-end pipelines for the three document types.
+
+card     photo → flattened card → OCR words → contact fields (vCard)
+invoice  photo → flattened page → OCR text → bookkeeping fields + checks
+archive  photo → flattened, cleaned page → text + searchable PDF
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import scanner
+from . import documents, scanner
+from .documents import Invoice
 from .extract import Contact, build_contact
 from .ocr import Word, read_words
 
@@ -43,10 +49,25 @@ def annotate(card: np.ndarray, contact: Contact) -> np.ndarray:
     return out
 
 
-class CardScanner:
+@dataclass
+class InvoiceResult:
+    page: np.ndarray
+    text: str
+    invoice: Invoice
+
+
+@dataclass
+class ArchiveResult:
+    page: np.ndarray            # cleaned page (background removed)
+    text: str
+    pdf: bytes                  # searchable PDF
+
+
+class DocScanner:
     def __init__(self, model_dir: str | Path | None = None, extractor: str | None = None, lang: str | None = None):
         self.extractor_kind = extractor or os.getenv("EXTRACTOR", "ner")  # "ner" or "llm"
         self.lang = lang or os.getenv("OCR_LANG", "eng+deu")
+        self.doc_lang = os.getenv("DOC_OCR_LANG", "deu+eng")
         self.ner = None
         self.llm = None
         if self.extractor_kind == "llm":
@@ -77,4 +98,20 @@ class CardScanner:
         return ScanResult(card, words, contact, annotate(card, contact))
 
     def scan(self, image: np.ndarray, corners: np.ndarray | None = None) -> ScanResult:
+        """Business card → contact."""
         return self.extract(self.flatten(image, corners))
+
+    def invoice(self, image: np.ndarray, corners: np.ndarray | None = None) -> InvoiceResult:
+        page = self.flatten(image, corners)
+        text = documents.read_text(page, lang=self.doc_lang)
+        return InvoiceResult(page, text, documents.parse_invoice(text))
+
+    def archive(self, image: np.ndarray, corners: np.ndarray | None = None) -> ArchiveResult:
+        if corners is None:
+            corners = scanner.detect_corners(image)
+        page = scanner.warp(image, corners) if corners is not None else image
+        clean = documents.clean_paper(page)
+        return ArchiveResult(clean, documents.read_text(clean, lang=self.doc_lang), documents.searchable_pdf(clean, lang=self.doc_lang))
+
+
+CardScanner = DocScanner  # backwards-compatible name

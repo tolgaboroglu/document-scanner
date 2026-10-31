@@ -1,35 +1,65 @@
-# CardScan: Business Card & Document Scanner
+# DocScan: Invoice, Archive & Business Card Scanner
 
-Photograph a business card on any surface. CardScan finds the card, straightens it, reads the text and fills in **name, company, job title, phone, e-mail and website**, ready to download as a vCard for your phone or as JSON/CSV.
+Photograph a document on any surface. DocScan finds the page, straightens it and turns it into data:
 
-The project started as a **freelance job for a German client on Upwork**: automating the scanning of business cards and documents and turning them into structured contact data. The client's code and data are confidential and not part of this repository. This repo holds the public demo (`legacy/`) and a rebuilt v2 with its own architecture, a fixed and re-evaluated NER model, tests and a new web app.
+- **Invoices** → invoice number, date, net, VAT, total, VAT ID and IBAN, with automatic bookkeeping checks
+- **Old paper records** → stains and yellowing removed, then plain text and a **searchable PDF** for the archive
+- **Business cards** → name, company, title, phone, e-mail and website, downloadable as a vCard
 
-![Demo: choose a photo, adjust the corners, review the extracted contact](docs/demo.gif)
+![Demo: scan an invoice, check the corners, review the extracted fields and checks](docs/demo.gif)
 
-| Results (dark theme) | Mobile |
+## The client project behind it
+
+This started as a **freelance job on Upwork for a German client**. The business had two piles of paper to get rid of:
+
+1. **Supplier invoices** that someone typed into the bookkeeping system by hand, which was slow and caused typos in amounts and bank details.
+2. **Old paper records** (letters, permits, contracts going back decades) that nobody could search, stored in folders that were yellowing and stained.
+
+The goal was a tool that turns a phone photo of any of these into usable data: fields ready for bookkeeping for invoices, searchable files for the archive, and contacts for the business cards collected at trade fairs.
+
+The client's documents, code and data are confidential and are **not** in this repository. Every sample here is synthetic and recreates the same document types: a German supplier invoice, a typewritten 1970s letter on stained paper, and German business cards. All names, companies and numbers are invented (the IBAN is the standard documentation example). This repo holds the original public demo (`legacy/`) and a rebuilt v2 with its own architecture, tests and a new web app.
+
+| Invoice → bookkeeping fields + checks | Old document → searchable PDF |
 |---|---|
-| ![Results](docs/screenshots/04-results-dark.png) | <img src="docs/screenshots/05-mobile.png" width="280" alt="Mobile view"> |
+| ![Invoice mode](docs/screenshots/06-invoice.png) | ![Archive mode](docs/screenshots/07-archive.png) |
+
+| Business card → vCard | Mobile |
+|---|---|
+| ![Business card mode](docs/screenshots/03-results.png) | <img src="docs/screenshots/05-mobile.png" width="280" alt="Mobile view"> |
 
 ## Features
 
-- **Automatic document detection.** OpenCV finds the card's four corners, even when it is tilted, shadowed or unevenly lit.
-- **Adjustable corners.** If detection is off, drag the handles onto the card before extracting.
-- **Perspective correction and lighting fix.** The card is flattened to a rectangle and contrast is evened out with CLAHE.
-- **OCR with positions.** Tesseract 5 reads every word with its bounding box (English + German by default).
-- **Field extraction with three layers:** a custom-trained spaCy NER model, rule-based validation for phone/e-mail/web, and a layout fallback for the name.
-- **Optional LLM mode.** Claude vision extracts the same fields as validated JSON, for unusual layouts or languages.
-- **Review before export.** Every field shows where it came from (model, rule, layout or LLM) and can be edited, retyped or removed.
-- **Export** as vCard 3.0, JSON or CSV.
-- **No real personal data.** Demo cards are generated synthetically with invented people and `example.com` domains.
+**All document types**
+- **Automatic page detection.** OpenCV finds the document's four corners, even when it is tilted, shadowed or unevenly lit.
+- **Adjustable corners.** If detection is off, drag the handles onto the corners before extracting.
+- **Perspective correction.** The page is flattened to a rectangle before reading.
+- **Review before export.** Every extracted value can be edited.
+
+**Invoices**
+- Extracts invoice number, date (converted to ISO), net, VAT rate, VAT, total, VAT ID and IBAN from German and English invoices; handles `1.234,56` and `1,234.56` amounts.
+- **Bookkeeping checks** flag OCR errors before data reaches accounting: net + VAT = total, VAT matches the stated rate, IBAN mod-97 checksum, required fields present.
+- Export as JSON or CSV.
+
+**Old documents**
+- **Background removal** (divide by a median-blurred copy of the page) wipes out stains, yellowing and uneven light while keeping the letters.
+- Export as a **searchable PDF** (the scan with an invisible text layer) or plain text.
+
+**Business cards**
+- Custom-trained spaCy NER model, rule-based validation for phone/e-mail/web and a layout fallback for the name.
+- Optional Claude vision extractor for unusual layouts.
+- Export as vCard 3.0, JSON or CSV.
 
 ## AI models and techniques
 
 | Stage | Model / technique | Why |
 |---|---|---|
-| Card detection | OpenCV: Gaussian blur → Canny edges → morphological closing → largest convex 4-point contour | Fast, needs no training, works on any background with visible card edges |
+| Page detection | OpenCV: Gaussian blur → Canny edges → morphological closing → largest convex 4-point contour | Fast, needs no training, works on any background with visible card edges |
 | Flattening | Perspective transform + CLAHE on the L channel (LAB) | Straight, evenly lit text gives Tesseract the best input |
-| OCR | **Tesseract 5** (LSTM engine), `eng+deu`, sparse-text mode, words sorted into lines | Business cards are scattered short lines, not paragraphs |
-| Field extraction | **spaCy NER** (tok2vec + transition-based NER), trained on 187 labelled cards | Learns which words are names, companies and titles |
+| OCR | **Tesseract 5** (LSTM engine), German + English | Cards: sparse-text mode with word boxes. Invoices and letters: column-aware page mode |
+| Invoice fields | Label-anchored patterns + amount parser + checks (sum, VAT rate, IBAN mod-97) | Invoices have fixed vocabulary ("Rechnungsnummer", "Gesamtbetrag"); checks catch misread digits |
+| Old paper cleanup | Background division (median blur) | Removes stains and yellowing; 10 → 14 of 14 lines read exactly on the sample letter |
+| Searchable PDF | Tesseract PDF renderer | Keeps the original look, adds selectable text |
+| Card fields | **spaCy NER** (tok2vec + transition-based NER), trained on 187 labelled cards | Learns which words are names, companies and titles |
 | Validation | Regex rules for e-mail, website and phone | Corrects mislabelled structured fields, fills gaps |
 | Name fallback | Layout heuristic: tallest unlabelled 2–3-word capitalised line | On cards, the name is usually the biggest text |
 | Alternative extractor | **Claude vision** (`claude-sonnet-5-5`), JSON output validated by the same rules | `EXTRACTOR=llm`; handles layouts the small NER model never saw |
@@ -39,20 +69,36 @@ The project started as a **freelance job for a German client on Upwork**: automa
 ```mermaid
 flowchart LR
     A[Photo] --> B[Detect corners<br/>OpenCV]
-    B -->|user can adjust| C[Warp + CLAHE]
-    C --> D[Tesseract OCR<br/>words + boxes]
-    D --> E[spaCy NER]
-    E --> F[Rules: validate,<br/>fill gaps]
-    F --> G[Layout name<br/>fallback]
-    C -.EXTRACTOR=llm.-> H[Claude vision<br/>JSON]
-    G --> I[Review & edit]
-    H --> I
-    I --> J[vCard / JSON / CSV]
+    B -->|user can adjust| C[Perspective warp]
+    C --> INV[Invoice:<br/>Tesseract page OCR]
+    INV --> INV2[Field patterns<br/>+ checks]
+    INV2 --> OUT1[JSON / CSV]
+    C --> ARC[Old document:<br/>background removal]
+    ARC --> ARC2[Tesseract OCR]
+    ARC2 --> OUT2[Searchable PDF / TXT]
+    C --> CARD[Card: CLAHE +<br/>OCR words + boxes]
+    CARD --> NER[spaCy NER → rules<br/>→ layout fallback]
+    C -.EXTRACTOR=llm.-> LLM[Claude vision]
+    NER --> OUT3[vCard / JSON / CSV]
+    LLM --> OUT3
 ```
 
 The NER model runs on a spaCy `Doc` built directly from the OCR words, so every predicted entity maps back to the exact words and boxes it came from.
 
-## Fixing the NER model: v1 → v2
+## Invoice checks in practice
+
+OCR rarely fails loudly; it misreads one digit. The checks are there to catch that before an amount or bank account reaches the bookkeeping system:
+
+| Check | What it catches |
+|---|---|
+| Net + VAT = total | A misread digit in any of the three amounts |
+| VAT = rate × net | Wrong rate or wrong VAT amount |
+| IBAN mod-97 checksum | Almost any single misread or swapped digit in the bank account |
+| Required fields present | Invoices where the number, date or total could not be found |
+
+`tests/test_docscan.py` changes one digit of a total (0 → 8) and checks that exactly the sum check fails.
+
+## Fixing the business-card NER model: v1 → v2
 
 While rebuilding, I found that the v1 training data used every BIO tag as its own entity label (`B-PHONE`, `I-PHONE`), so each word became a separate entity, and a few tags had typos (`B-PHOE`, `I-OR`). v2 converts the tags into proper multi-word entities, fixes the typos and splits the data **by card** (187 train / 40 dev / 40 test), so no card appears in both training and test.
 
@@ -93,28 +139,33 @@ pip install -r requirements.txt
 python -m docscan.server                              # http://127.0.0.1:5000
 ```
 
-Click a sample card or upload your own photo. For the LLM extractor, copy `.env.example` to `.env`, add `ANTHROPIC_API_KEY` and set `EXTRACTOR=llm`.
+Pick a document type, click a sample or upload your own photo. For the LLM extractor, copy `.env.example` to `.env`, add `ANTHROPIC_API_KEY` and set `EXTRACTOR=llm`.
 
 Use it from Python:
 
 ```python
 import cv2
-from docscan.pipeline import CardScanner
-from docscan.export import to_vcard
+from docscan.pipeline import DocScanner
 
-result = CardScanner().scan(cv2.imread("samples/card_1.jpg"))
-print(result.contact.to_dict()["grouped"])
-print(to_vcard(result.contact))
+scanner = DocScanner()
+invoice = scanner.invoice(cv2.imread("samples/invoice_1.jpg")).invoice
+print(invoice.total, invoice.iban, invoice.checks)
+
+archive = scanner.archive(cv2.imread("samples/archive_1.jpg"))
+open("letter.pdf", "wb").write(archive.pdf)          # searchable PDF
+
+card = scanner.scan(cv2.imread("samples/card_1.jpg"))
+print(card.contact.to_dict()["grouped"])
 ```
 
 Tests, retraining and samples:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                                                            # 17 tests
+pytest -q                                                            # 24 tests
 python scripts/train_ner.py legacy/business_card_/BusinessCardNER/businessCard.csv
 python scripts/evaluate.py legacy/business_card_/BusinessCardNER/businessCard.csv
-python scripts/make_samples.py                                        # regenerate synthetic cards
+python scripts/make_samples.py                                        # regenerate synthetic samples
 ```
 
 ## Project structure
@@ -128,11 +179,12 @@ docscan/
   extract.py    merge model + rules, line splitting, layout name fallback
   llm.py        optional Claude vision extractor with validation
   export.py     vCard, JSON, CSV
-  pipeline.py   CardScanner: photo → contact
+  documents.py  invoice fields + checks, old-paper cleanup, searchable PDF
+  pipeline.py   DocScanner: card, invoice and archive pipelines
   server.py     Flask app and JSON API
 templates/, static/   web UI (upload → corners → review)
 models/card_ner/      trained NER model (v2)
-samples/              synthetic card photos + ground truth
+samples/              synthetic card, invoice and old-document photos + ground truth
 scripts/              train_ner.py, evaluate.py, make_samples.py
 tests/                pytest suite
 legacy/               v1 demo app, notebooks and original model
@@ -149,12 +201,13 @@ legacy/               v1 demo app, notebooks and original model
 | Structured fields | Model only | Model + rule validation + layout fallback |
 | LLM option | None | Claude vision with validated JSON |
 | Output | Text on screen | Editable fields, vCard / JSON / CSV |
-| Tests | None | 17 tests on synthetic cards |
+| Document types | Business cards | Invoices, old records, business cards |
+| Tests | None | 24 tests on synthetic samples |
 
 ## Credits and data
 
 - The v1 demo in `legacy/` was built following the structure of the course *"Intelligently Extract Text & Data from Document with OCR NER"*. v2 is a separate implementation.
-- The NER training data (`legacy/business_card_/BusinessCardNER/businessCard.csv`) is the course's labelled business-card dataset. Demo images in `samples/` are synthetic.
+- The NER training data (`legacy/business_card_/BusinessCardNER/businessCard.csv`) is the course's labelled business-card dataset. All images in `samples/` are synthetic.
 - Video walkthrough of v1: [Part 1](https://youtu.be/ihsTjo_Youw) · [Part 2](https://youtu.be/OV_yRhQuAfs)
 
 ---

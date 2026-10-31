@@ -137,3 +137,76 @@ def test_api_flow(card_scanner):
     assert vcf.status_code == 200 and b"BEGIN:VCARD" in vcf.data
     assert client.post("/api/detect", data={}).status_code == 400
     assert client.post("/api/extract", json={"id": "missing", "corners": det["corners"]}).status_code == 404
+
+
+# --- invoices and old documents -----------------------------------------------
+
+from docscan.documents import clean_paper, iban_is_valid, parse_amount, parse_invoice, read_text  # noqa: E402
+
+INVOICE_TEXT = """Brandt & Söhne Bürobedarf GmbH
+Nordlicht Logistik GmbH Rechnungsnummer: RE-2024-0187
+Musterweg 5 Rechnungsdatum: 14.03.2024
+Nettobetrag 1.687,00 €
+zzgl. 19 % MwSt. 320,53 €
+Gesamtbetrag 2.007,53 €
+USt-IdNr.: DE123456789 Amtsgericht Hamburg HRB 99999
+IBAN: DE89 3704 0044 0532 0130 00 BIC: COBADEFFXXX
+"""
+
+
+def test_parse_amount_formats():
+    assert str(parse_amount("1.234,56")) == "1234.56"
+    assert str(parse_amount("1,234.56")) == "1234.56"
+    assert str(parse_amount("817,53 €")) == "817.53"
+
+
+def test_iban_checksum():
+    assert iban_is_valid("DE89 3704 0044 0532 0130 00")
+    assert not iban_is_valid("DE89 3704 0044 0532 0130 01")  # one misread digit
+
+
+def test_parse_invoice_text():
+    inv = parse_invoice(INVOICE_TEXT)
+    assert (inv.invoice_number, inv.date) == ("RE-2024-0187", "2024-03-14")
+    assert (inv.net, inv.vat_rate, inv.vat, inv.total) == ("1687.00", "19", "320.53", "2007.53")
+    assert inv.vat_id == "DE123456789" and inv.iban == "DE89 3704 0044 0532 0130 00"
+    assert all(c["ok"] for c in inv.checks)
+
+
+def test_invoice_checks_flag_ocr_errors():
+    inv = parse_invoice(INVOICE_TEXT.replace("2.007,53", "2.087,53"))  # 0 misread as 8
+    failed = [c["name"] for c in inv.checks if not c["ok"]]
+    assert failed == ["Net + VAT = total"]
+
+
+@needs_tesseract
+def test_invoice_end_to_end(card_scanner):
+    t = truth(ROOT / "samples" / "invoice_1.jpg")
+    inv = card_scanner.invoice(cv2.imread(str(ROOT / "samples" / "invoice_1.jpg"))).invoice
+    assert inv.invoice_number == t["invoice_number"]
+    assert inv.total == t["total"].replace(",", ".")
+    assert inv.iban == t["iban"]
+    assert all(c["ok"] for c in inv.checks)
+
+
+@needs_tesseract
+def test_background_removal_helps_old_paper():
+    path = ROOT / "samples" / "archive_1.jpg"
+    lines = truth(path)["lines"]
+    page = scanner.warp(cv2.imread(str(path)), scanner.order_points(np.array(truth(path)["corners"])))
+    raw = sum(ln in read_text(scanner.enhance(page)) for ln in lines)
+    cleaned = sum(ln in read_text(clean_paper(page)) for ln in lines)
+    assert cleaned == len(lines) and cleaned > raw
+
+
+@needs_tesseract
+def test_api_invoice_and_archive(card_scanner):
+    from docscan.server import create_app
+
+    client = create_app(card_scanner).test_client()
+    for sample, mode in (("invoice_1", "invoice"), ("archive_1", "archive")):
+        det = client.post("/api/detect", data={"sample": sample}).json
+        res = client.post("/api/extract", json={"id": det["id"], "mode": mode, "corners": det["corners"]})
+        assert res.status_code == 200 and res.json["mode"] == mode
+    pdf = client.get(res.json["pdf"])
+    assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF")

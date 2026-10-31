@@ -4,7 +4,18 @@ const SOURCE_TEXT = { ner: "model", rules: "rule", layout: "layout", llm: "LLM",
 
 const $ = (s) => document.querySelector(s);
 const canvas = $("#canvas"), ctx = canvas.getContext("2d");
-let state = { id: null, img: null, corners: [], drag: -1 };
+let state = { id: null, img: null, corners: [], drag: -1, mode: "card", text: "", pdf: null, invoice: null };
+
+const INVOICE_FIELDS = [
+  ["seller", "Seller"], ["invoice_number", "Invoice no."], ["date", "Date"], ["net", "Net"],
+  ["vat_rate", "VAT rate %"], ["vat", "VAT"], ["total", "Total"], ["currency", "Currency"],
+  ["vat_id", "VAT ID"], ["iban", "IBAN"],
+];
+
+function setMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll(".mode").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === mode)));
+}
 
 function showError(msg) { const e = $("#error"); e.textContent = msg; e.hidden = !msg; }
 function step(n) {
@@ -25,7 +36,8 @@ async function detect(form) {
   state.id = data.id;
   state.corners = data.corners.map(([x, y]) => ({ x, y }));
   const msg = $("#detect-msg");
-  msg.textContent = data.found ? "Card found. Check the corners." : "No card edge found. Drag the handles onto the card's corners.";
+  const noun = { card: "Card", invoice: "Page", archive: "Page" }[state.mode];
+  msg.textContent = data.found ? `${noun} found. Check the corners.` : "No document edge found. Drag the handles onto the corners.";
   msg.classList.toggle("warn", !data.found);
   const img = new Image();
   img.onload = () => { state.img = img; canvas.width = img.width; canvas.height = img.height; draw(); step(2); };
@@ -83,13 +95,24 @@ async function extract() {
   try {
     const res = await fetch("/api/extract", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: state.id, corners: state.corners.map((c) => [c.x, c.y]) }),
+      body: JSON.stringify({ id: state.id, mode: state.mode, corners: state.corners.map((c) => [c.x, c.y]) }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Extraction failed.");
     $("#card").src = data.card;
-    $("#card-cap").textContent = `${data.words} words read · ${data.engine}`;
-    renderRows(data.fields);
+    $("#engine").textContent = data.engine;
+    ["card", "invoice", "archive"].forEach((m) => { $("#r-" + m).hidden = m !== data.mode; });
+    if (data.mode === "card") {
+      $("#card-cap").textContent = `${data.words} words read · ${data.engine}`;
+      renderRows(data.fields);
+    } else if (data.mode === "invoice") {
+      $("#card-cap").textContent = data.engine;
+      renderInvoice(data.invoice);
+    } else {
+      $("#card-cap").textContent = `${data.text.split(/\s+/).filter(Boolean).length} words read · ${data.engine}`;
+      $("#arch-text").value = data.text.trim();
+      state.pdf = data.pdf;
+    }
     step(3);
   } catch (err) { showError(err.message); }
   finally { btn.disabled = false; btn.textContent = "Extract details"; stage.classList.remove("busy"); }
@@ -124,6 +147,46 @@ function renderRows(fields) {
   [...fields].sort((a, b) => order(a) - order(b)).forEach((f) => rows.append(rowEl(f)));
 }
 
+function renderInvoice(inv) {
+  state.invoice = inv;
+  const rows = $("#inv-rows");
+  rows.innerHTML = "";
+  INVOICE_FIELDS.forEach(([key, label]) => {
+    const row = document.createElement("div");
+    row.className = "row ro";
+    const id = "inv-" + key;
+    row.innerHTML = `<label for="${id}"></label><input id="${id}">`;
+    row.querySelector("label").textContent = label;
+    const input = row.querySelector("input");
+    input.value = inv[key] ?? "";
+    input.dataset.key = key;
+    rows.append(row);
+  });
+  const list = $("#checks");
+  list.innerHTML = "";
+  inv.checks.forEach((c) => {
+    const li = document.createElement("li");
+    li.className = c.ok ? "" : "bad";
+    li.innerHTML = "<div><span></span><small></small></div>";
+    li.querySelector("span").textContent = c.name;
+    li.querySelector("small").textContent = c.detail;
+    list.append(li);
+  });
+}
+
+function invoiceValues() {
+  const out = {};
+  document.querySelectorAll("#inv-rows input").forEach((i) => { out[i.dataset.key] = i.value.trim() || null; });
+  return out;
+}
+
+function saveText(text, name, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 function currentFields() {
   return [...document.querySelectorAll("#rows .row")].map((r) => ({
     label: r.querySelector("select").value, value: r.querySelector("input").value, source: r.dataset.source,
@@ -155,8 +218,26 @@ drop.addEventListener("drop", (e) => {
   if (file) { const form = new FormData(); form.append("image", file); detect(form); }
 });
 document.querySelectorAll(".sample").forEach((b) => b.addEventListener("click", () => {
+  setMode(b.dataset.mode);
   const form = new FormData(); form.append("sample", b.dataset.sample); detect(form);
 }));
+document.querySelectorAll(".mode").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+$("#inv-json").onclick = () => saveText(JSON.stringify(invoiceValues(), null, 2), "invoice.json", "application/json");
+$("#inv-csv").onclick = () => {
+  const v = invoiceValues();
+  const esc = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
+  saveText(Object.keys(v).map(esc).join(",") + "\n" + Object.values(v).map(esc).join(",") + "\n", "invoice.csv", "text/csv");
+};
+$("#arch-txt").onclick = () => saveText($("#arch-text").value, "document.txt", "text/plain");
+$("#arch-pdf").onclick = async () => {
+  if (!state.pdf) return;
+  const res = await fetch(state.pdf);
+  if (!res.ok) return showError("This PDF has expired. Scan the page again.");
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: "document.pdf" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
 $("#run").onclick = extract;
 $("#back1").onclick = () => step(1);
 $("#back2").onclick = () => step(1);

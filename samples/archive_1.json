@@ -1,0 +1,36 @@
+{
+  "lines": [
+    "STADTVERWALTUNG MUSTERSTADT",
+    "Bauamt",
+    "Musterstadt, den 12. Mai 1978",
+    "Betreff: Baugenehmigung Nr. 78/1142",
+    "Sehr geehrter Herr Hoffmann,",
+    "auf Ihren Antrag vom 3. April 1978 wird Ihnen hiermit",
+    "die Genehmigung zur Errichtung einer Garage auf dem",
+    "Grundstück Lindenallee 14, Flurstück 233/7, erteilt.",
+    "Die Bauarbeiten sind innerhalb von zwei Jahren nach",
+    "Zugang dieses Bescheides zu beginnen. Die beigefügten",
+    "Auflagen sind Bestandteil dieser Genehmigung.",
+    "Hochachtungsvoll",
+    "Im Auftrag",
+    "K. Lehmann"
+  ],
+  "corners": [
+    [
+      221.89999389648438,
+      357.70001220703125
+    ],
+    [
+      1528.0999755859375,
+      326.0
+    ],
+    [
+      1649.0999755859375,
+      2183.39990234375
+    ],
+    [
+      346.6000061035156,
+      2251.5
+    ]
+  ]
+}
