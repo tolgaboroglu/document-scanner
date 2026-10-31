@@ -1,0 +1,26 @@
+{
+  "NAME": "Lukas Becker",
+  "DES": "Senior Data Engineer",
+  "ORG": "Rheinwerk Analytics AG",
+  "PHONE": "+49 221 987 6543",
+  "EMAIL": "l.becker@rheinwerk.example.com",
+  "WEB": "www.rheinwerk.example.com",
+  "corners": [
+    [
+      262.6000061035156,
+      215.10000610351562
+    ],
+    [
+      1345.5,
+      373.8999938964844
+    ],
+    [
+      1348.5999755859375,
+      983.5999755859375
+    ],
+    [
+      225.6999969482422,
+      866.7999877929688
+    ]
+  ]
+}

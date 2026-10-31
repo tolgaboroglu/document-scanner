@@ -1,0 +1,26 @@
+{
+  "NAME": "Sophie Wagner",
+  "DES": "Marketing Manager",
+  "ORG": "Alpenblick Design Studio",
+  "PHONE": "+49 89 5550 1234",
+  "EMAIL": "sophie@alpenblick.example.com",
+  "WEB": "www.alpenblick.example.com",
+  "corners": [
+    [
+      443.1000061035156,
+      219.0
+    ],
+    [
+      1412.800048828125,
+      392.3999938964844
+    ],
+    [
+      1340.699951171875,
+      971.0
+    ],
+    [
+      302.3999938964844,
+      838.0999755859375
+    ]
+  ]
+}

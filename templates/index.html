@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CardScan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>CardScan</div>
+    <span class="engine" title="Extraction engine">{{ engine }}</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <ol class="steps" aria-label="Progress">
+    <li data-step="1" class="on">Upload</li>
+    <li data-step="2">Adjust corners</li>
+    <li data-step="3">Review &amp; export</li>
+  </ol>
+
+  <!-- 1. Upload -->
+  <section id="s1" class="panel">
+    <div class="intro">
+      <h1>Business card to contact, in three steps</h1>
+      <p>Photograph a card on any surface. CardScan finds the card, straightens it, reads the text and fills in name, company, title, phone, e-mail and website.</p>
+    </div>
+    <label class="drop" id="drop" for="file">
+      <input type="file" id="file" accept="image/jpeg,image/png">
+      <span class="drop-title">Drop a photo here or choose a file</span>
+      <span class="drop-sub">JPG or PNG, up to 12 MB</span>
+    </label>
+    {% if samples %}
+    <div class="samples">
+      <span class="label">Or try a sample card</span>
+      <div class="sample-row">
+        {% for s in samples %}
+        <button type="button" class="sample" data-sample="{{ s }}" aria-label="Use sample {{ loop.index }}">
+          <img src="/samples/{{ s }}.jpg" alt="" loading="lazy">
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- 2. Corners -->
+  <section id="s2" class="panel" hidden>
+    <div class="bar">
+      <p id="detect-msg" class="msg"></p>
+      <div class="actions">
+        <button type="button" class="ghost" id="back1">Choose another photo</button>
+        <button type="button" class="primary" id="run">Extract details</button>
+      </div>
+    </div>
+    <div class="stage" id="stage">
+      <canvas id="canvas" aria-label="Photo with draggable card corners"></canvas>
+      <div class="scanline" aria-hidden="true"></div>
+    </div>
+    <p class="hint">Drag the four handles onto the card's corners if they are off.</p>
+  </section>
+
+  <!-- 3. Results -->
+  <section id="s3" class="panel" hidden>
+    <div class="results">
+      <figure class="card-view">
+        <img id="card" alt="Straightened card with detected fields outlined">
+        <figcaption id="card-cap"></figcaption>
+      </figure>
+      <div class="fields">
+        <div class="fields-head">
+          <h2>Contact details</h2>
+          <button type="button" class="ghost small" id="add">Add field</button>
+        </div>
+        <p class="sub">Check and edit before exporting. The tag shows where each value came from.</p>
+        <div id="rows" class="rows"></div>
+        <div class="export">
+          <button type="button" class="primary" data-fmt="vcf">Download vCard</button>
+          <button type="button" class="ghost" data-fmt="json">JSON</button>
+          <button type="button" class="ghost" data-fmt="csv">CSV</button>
+        </div>
+        <button type="button" class="link" id="back2">Scan another card</button>
+      </div>
+    </div>
+  </section>
+
+  <p id="error" class="error" role="alert" hidden></p>
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "NAME": "Anna Schmidt",
+  "DES": "Head of Operations",
+  "ORG": "Nordlicht Logistik GmbH",
+  "PHONE": "+49 30 1234 5678",
+  "EMAIL": "anna.schmidt@nordlicht.example.com",
+  "WEB": "www.nordlicht.example.com",
+  "corners": [
+    [
+      257.70001220703125,
+      225.8000030517578
+    ],
+    [
+      1321.0999755859375,
+      262.29998779296875
+    ],
+    [
+      1295.199951171875,
+      806.4000244140625
+    ],
+    [
+      251.1999969482422,
+      793.7999877929688
+    ]
+  ]
+}
